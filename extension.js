@@ -39,8 +39,8 @@ function activate(context) {
 		}
 
 		// grab the branch name from each directory and save branchName and dirName
-		for(const dir of getDirectories(configPath)) {
-			await git(path.join(configPath, dir)).raw([
+		for(const dir of vscode.workspace.workspaceFolders) {
+			await git(dir.uri.fsPath).raw([
 				'rev-parse', '--abbrev-ref', 'HEAD'
 				], (err, result) => {
 					if (err) {
@@ -121,9 +121,11 @@ function setup() {
 	let gitloaderParent;
 
 	if (vscode.workspace.workspaceFolders) {
-		configPath = removeLastDirectoryPartOf(vscode.workspace.workspaceFolders[0].uri.fsPath);
+		let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath
+		console.log(`Path to first workspace folder: ${workspacePath}`)
+		configPath = removeLastDirectoryPartOf(workspacePath);
 	} else {
-		configPath = __dirname;
+		vscode.window.showErrorMessage('You must be in a workspace to use gitloader!')
 	}
 	const gitloaderPath = path.join(configPath, 'gitloader.json')
 	console.log(`Looking for gitloader.json in ${configPath}`)
@@ -141,17 +143,11 @@ function setup() {
 	return {configPath, gitloaderPath, gitloaderParent};
 }
 
-function getDirectories(source) {
-	return fs.readdirSync(source, { withFileTypes: true })
-		.filter(dirent => dirent.isDirectory())
-		.map(dirent => dirent.name);
-}
-
-function removeLastDirectoryPartOf(path)
-{
-    var temp = path.split('/');
+// TODO: make non platform specific
+function removeLastDirectoryPartOf(path) {
+    var temp = path.split('\\');
     temp.pop();
-    return(temp.join('/'));
+    return(temp.join('\\'));
 }
 
 module.exports = {
