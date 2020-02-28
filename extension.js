@@ -12,7 +12,7 @@ const git = require('simple-git')
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
-	let {configPath, gitloaderPath, gitloaderParent} = setup();
+	let {configPath, gitloaderPath, gitloaderParent} = setup()
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
@@ -121,7 +121,7 @@ function setup() {
 	let gitloaderParent;
 
 	if (vscode.workspace.workspaceFolders) {
-		configPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		configPath = removeLastDirectoryPartOf(vscode.workspace.workspaceFolders[0].uri.fsPath);
 	} else {
 		configPath = __dirname;
 	}
@@ -145,6 +145,13 @@ function getDirectories(source) {
 	return fs.readdirSync(source, { withFileTypes: true })
 		.filter(dirent => dirent.isDirectory())
 		.map(dirent => dirent.name);
+}
+
+function removeLastDirectoryPartOf(path)
+{
+    var temp = path.split('/');
+    temp.pop();
+    return(temp.join('/'));
 }
 
 module.exports = {

@@ -1,6 +1,7 @@
 {
 	"name": "gitloader",
 	"displayName": "gitloader",
+	"publisher": "gitloader",
 	"description": "Save and Load branch states in projects containing multiple git repos",
 	"version": "0.0.1",
 	"engines": {
