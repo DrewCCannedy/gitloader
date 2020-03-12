@@ -14,7 +14,7 @@ class Parent {
 
 		if (vscode.workspace.workspaceFolders) {
 			let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath
-			this.configPath = removeLastDirectoryPartOf(workspacePath)
+			configPath = removeLastDirectoryPartOf(workspacePath)
 			console.log(`Gitloader initialized using workspace path: ${workspacePath}`)
 		} else {
 			vscode.window.showErrorMessage('You must be in a workspace to use gitloader!')
@@ -169,7 +169,7 @@ class Parent {
 		}
 		const input = await vscode.window.showQuickPick(profileStrings)
 		let deletedProfile = this.deleteProfile(input)
-		fs.writeFileSync(this.gitloaderPath, JSON.stringify(this))
+		fs.writeFileSync(this.gitloaderPath, toPrettyJson(this))
 
 		console.log(`Deleting the following profile from config: ${input}`)
 		console.log(toPrettyJson(deletedProfile))
@@ -205,11 +205,12 @@ class Branch {
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
+	console.log('Attempting to create/load gitloader.')
 	const parent = new Parent();
 
-	let save = vscode.commands.registerCommand('extension.save', parent.save)
-	let load = vscode.commands.registerCommand('extension.load', parent.load)
-	let del = vscode.commands.registerCommand('extension.delete', parent.delete)
+	let save = vscode.commands.registerCommand('extension.save', parent.save.bind(parent))
+	let load = vscode.commands.registerCommand('extension.load', parent.load.bind(parent))
+	let del = vscode.commands.registerCommand('extension.delete', parent.delete.bind(parent))
 
 	context.subscriptions.push(save)
 	context.subscriptions.push(load)
@@ -241,7 +242,7 @@ function removeLastDirectoryPartOf(path) {
  * @param {Object} o 
  */
 function toPrettyJson(o) {
-	JSON.stringify(o, null, 2)
+	return JSON.stringify(o, null, 2)
 }
 
 module.exports = {
