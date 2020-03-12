@@ -1,153 +1,247 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode')
 const path = require('path')
 const fs = require('fs')
 const git = require('simple-git')
 
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
-
 /**
- * @param {vscode.ExtensionContext} context
+ * Serves as the outer JSON object for gitloader.json.
+ * Will create or load a previous gitloader.json.
  */
-function activate(context) {
-	let {configPath, gitloaderPath, gitloaderParent} = setup()
+class Parent {
+	constructor() {
+		this.profiles = []
+		let configPath
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "gitloader" is now active!');
+		if (vscode.workspace.workspaceFolders) {
+			let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath
+			this.configPath = removeLastDirectoryPartOf(workspacePath)
+			console.log(`Gitloader initialized using workspace path: ${workspacePath}`)
+		} else {
+			vscode.window.showErrorMessage('You must be in a workspace to use gitloader!')
+		}
+		const gitloaderPath = path.join(configPath, 'gitloader.json')
+		console.log(`Looking for gitloader.json in ${configPath}`)
+		try {
+			// Touch the file. If it does not exist, will throw exception
+			fs.accessSync(gitloaderPath)
+			let previousParent = JSON.parse(fs.readFileSync(gitloaderPath))
+			this.profiles = previousParent.profiles
+			console.log(`Using gitloader.json in ${configPath}`)
+		} catch (error) {
+			fs.writeFileSync(gitloaderPath, toPrettyJson(this))
+			console.log(`gitloader.json not found: creating one in ${configPath}`)
+		}
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let save = vscode.commands.registerCommand('extension.save', async () => {
-		// The code you place here will be executed every time your command is executed
+		this.configPath = configPath
+		this.gitloaderPath = gitloaderPath
+	}
+	/**
+	 * Add a profile to profiles.
+	 * @param {Profile} profile 
+	 */
+	addProfile(profile) {
+		this.profiles.push(profile)
+	}
+	/**
+	 * Returns true if a profile with configName already exists.
+	 * @param {String} configName 
+	 */
+	doesProfileExist(configName) {
+		let index = this.profiles.findIndex(obj => obj.configName == configName)
+		if (index < 0) {
+			return false
+		} else {
+			return true
+		}
+	}
+	/**
+	 * Returns the profile matching the configName.
+	 * @param {String} configName 
+	 */
+	getProfile(configName) {
+		return this.profiles.find(obj => obj.configName == configName)
+	}
+	/**
+	 * Replaces the profile with the same config name as the passed profile.
+	 * Throws an exception if the profile does not exist.
+	 * @param {Profile} profile 
+	 */
+	replaceProfile(profile) {
+		let index = this.profiles.findIndex(obj => obj.configName == profile.configName)
+		if (index < 0) {
+			throw "This profile cannot be replaced since it does not exist!"
+		} else {
+			this.profiles[index] = profile
+		}
+	}
+	/**
+	 * Deletes a profile with the same configName as configName.
+	 * @param {string} configName
+	 */
+	deleteProfile(configName) {
+		let index = this.profiles.findIndex(obj => obj.configName == configName)
+		return this.profiles.splice(index, 1)[0]
+	}
+	/**
+	 * Saves the current configuration as a new profile in gitloader.json.
+	 */
+	async save() {
 		const input = await vscode.window.showInputBox({
 			value: 'configurationName',
 			valueSelection: [0, 17],
-		});
-
+		})
+	
 		if (!input) {
-			vscode.window.showErrorMessage('No name provided, nothing was saved.');
-			return;
+			vscode.window.showErrorMessage('No name provided, nothing was saved.')
+			return
 		}
+	
+		const profile = new Profile(input)
 
-		let gitloaderChild = {
-			configName: input,
-			branches:[],
-		}
-
+		console.log(`Adding the following from config: ${input}`)
+	
 		// grab the branch name from each directory and save branchName and dirName
 		for(const dir of vscode.workspace.workspaceFolders) {
 			await git(dir.uri.fsPath).raw([
 				'rev-parse', '--abbrev-ref', 'HEAD'
 				], (err, result) => {
 					if (err) {
-						throw err;
+						throw err
 					}
-					if (result) {
-						gitloaderChild.branches.push({
-							dirName: dir,
-							branchName: result.replace('\n', ''),
-						})
+					result = result.replace('\n', '')
+					if (result && result != "master" && result != "develop") {
+						const branch = new Branch(dir.name, result)
+						profile.addBranch(branch)
+						console.log(`${toPrettyJson(branch)}`)
 					}
 				}
 			)
 		}
-
+	
 		// if the config name exists, replace it
-		let index = gitloaderParent.profiles.findIndex(obj => obj.configName == input)
-		if (index < 0) {
-			gitloaderParent.profiles.push(gitloaderChild);
+		// TODO: prompt the user if they are sure they want to replace first
+		if (this.doesProfileExist(profile.configName)) {
+			this.replaceProfile(profile)
+			console.log(`Replacing profile: ${toPrettyJson(profile)}`)
 		} else {
-			gitloaderParent.profiles[index] = gitloaderChild
+			this.addProfile(profile)
+			console.log(`Creating profile: ${toPrettyJson(profile)}`)
 		}
-
-		fs.writeFileSync(gitloaderPath, JSON.stringify(gitloaderParent))
-
-		// Display a message box to the user
-		vscode.window.showInformationMessage(`Current branch config saved as ${input}!`);
-	})
-
-	let load = vscode.commands.registerCommand('extension.load', async () => {
-		let profileStrings = [];
-		for (const child of gitloaderParent.profiles) {
+	
+		fs.writeFileSync(this.gitloaderPath, toPrettyJson(this))
+	
+		vscode.window.showInformationMessage(`Current branch config saved as ${input}!`)
+	}
+	/**
+	 * Load a saved profile from gitloader.json.
+	 */
+	async load() {
+		let profileStrings = []
+		for (const child of this.profiles) {
 			profileStrings.push(child.configName)
 		}
 		const input = await vscode.window.showQuickPick(profileStrings)
-		const currentConfig = gitloaderParent.profiles.find(obj => obj.configName == input)
+		const currentConfig = this.getProfile(input)
 
+		console.log(`Loading the following from config: ${input}`)
+
+		// checkout to all the saved branches
 		currentConfig.branches.forEach(async (branch) =>  {
-			await git(path.join(configPath, branch.dirName)).raw([
+			await git(path.join(this.configPath, branch.dirName)).raw([
 				'checkout', branch.branchName
 				], (err) => {
 					if (err) {
-						throw err;
+						throw err
 					}
+					console.log(`${toPrettyJson(branch)}`)
 				}
 			)
 		})
-
-		// Display a message box to the user
-		vscode.window.showInformationMessage(`Config: ${input} loaded!`);
-	})
-
-	let del = vscode.commands.registerCommand('extension.delete', async () => {
-		let profileStrings = [];
-		for (const child of gitloaderParent.profiles) {
+		vscode.window.showInformationMessage(`Config: ${input} loaded!`)
+	}
+	/**
+	 * Delete a profile in gitloader.json.
+	 */
+	async delete () {
+		let profileStrings = []
+		for (const child of this.profiles) {
 			profileStrings.push(child.configName)
 		}
 		const input = await vscode.window.showQuickPick(profileStrings)
-		let index = gitloaderParent.profiles.findIndex(obj => obj.configName == input)
-		gitloaderParent.profiles.splice(index, 1)
+		let deletedProfile = this.deleteProfile(input)
+		fs.writeFileSync(this.gitloaderPath, JSON.stringify(this))
 
-		fs.writeFileSync(gitloaderPath, JSON.stringify(gitloaderParent))
+		console.log(`Deleting the following profile from config: ${input}`)
+		console.log(toPrettyJson(deletedProfile))
 
-		// Display a message box to the user
-		vscode.window.showInformationMessage(`Config: ${input} deleted!`);
-	})
-
-	context.subscriptions.push(save);
-	context.subscriptions.push(load);
-	context.subscriptions.push(del);
+		vscode.window.showInformationMessage(`Config: ${input} deleted!`)
+	}
 }
 
-// this method is called when your extension is deactivated
+/**
+ * Saves branch states under a configuration name.
+ */
+class Profile {
+	constructor(configName) {
+		this.configName = configName
+		this.branches = []
+	}
+	addBranch(branch) {
+		this.branches.push(branch)
+	}
+}
+
+/**
+ * Holds branch data like directory name and branch name.
+ */
+class Branch {
+	constructor(dirName, branchName) {
+		this.dirName = dirName
+		this.branchName = branchName
+	}
+}
+
+/**
+ * @param {vscode.ExtensionContext} context
+ */
+function activate(context) {
+	const parent = new Parent();
+
+	let save = vscode.commands.registerCommand('extension.save', parent.save)
+	let load = vscode.commands.registerCommand('extension.load', parent.load)
+	let del = vscode.commands.registerCommand('extension.delete', parent.delete)
+
+	context.subscriptions.push(save)
+	context.subscriptions.push(load)
+	context.subscriptions.push(del)
+}
+
 function deactivate() { }
 
-function setup() {
-	let configPath;
-	let gitloaderParent;
-
-	if (vscode.workspace.workspaceFolders) {
-		let workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath
-		console.log(`Path to first workspace folder: ${workspacePath}`)
-		configPath = removeLastDirectoryPartOf(workspacePath);
+/**
+ * Removes the last directory from a path string. 
+ * Should handle both windows and unix paths.
+ * @param {String} path 
+ */
+function removeLastDirectoryPartOf(path) {
+	let splitPath = path.split('\\')
+	// if not windows path
+	if (splitPath[0].length == path.length) {
+		splitPath = path.split('/')
+		splitPath.pop()
+		return(splitPath.join('/'))
 	} else {
-		vscode.window.showErrorMessage('You must be in a workspace to use gitloader!')
-	}
-	const gitloaderPath = path.join(configPath, 'gitloader.json')
-	console.log(`Looking for gitloader.json in ${configPath}`)
-	try {
-		fs.accessSync(gitloaderPath)
-	} catch (error) {
-		gitloaderParent = {
-			profiles: [],
-		}
-		fs.writeFileSync(gitloaderPath, JSON.stringify(gitloaderParent))
-	}	
-
-	gitloaderParent = JSON.parse(fs.readFileSync(gitloaderPath))
-
-	return {configPath, gitloaderPath, gitloaderParent};
+		splitPath.pop()
+		return(splitPath.join('\\'))
+	}    
 }
 
-// TODO: make non platform specific
-function removeLastDirectoryPartOf(path) {
-    var temp = path.split('\\');
-    temp.pop();
-    return(temp.join('\\'));
+/**
+ * Turns an object into a formatted JSON string. 
+ * @param {Object} o 
+ */
+function toPrettyJson(o) {
+	JSON.stringify(o, null, 2)
 }
 
 module.exports = {
