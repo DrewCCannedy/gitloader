@@ -1,47 +1,135 @@
+import simpleGit from 'simple-git';
 import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
+import { Branch, Profile } from './types';
+
 /**
- * Removes the last directory from a path string. 
- * Should handle both windows and unix paths.
- * @param {String} path 
+ * @param {vscode.ExtensionContext} context
  */
-function removeLastDirectoryPartOf(path: String) {
-	let splitPath = path.split('\\')
-	// if not windows path
-	if (splitPath[0].length == path.length) {
-		splitPath = path.split('/')
-		splitPath.pop()
-		return(splitPath.join('/'))
-	} else {
-		splitPath.pop()
-		return(splitPath.join('\\'))
-	}    
-}
-
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	const workspacePath = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
-	if (workspacePath === undefined) {
-		vscode.window.showErrorMessage('You must be in a workspace to use gitloader!');
-		return;
-	} else {
-		console.log(`Gitloader initialized using workspace path: ${workspacePath}`);
-	}
-	const configPath = removeLastDirectoryPartOf(workspacePath);	
-	const gitloaderPath = path.join(configPath, 'gitloader.json');
-	console.log(`Looking for gitloader.json in ${configPath}`);
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('gitloader.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from Gitloader!');
-	});
+	console.log('Attempting to create or load gitprofiles.');
+	const workspacePath = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : "";
+	const workspaceFolders = vscode.workspace.workspaceFolders || [];
+	const state = context.workspaceState;
 
-	context.subscriptions.push(disposable);
+	if (workspacePath === undefined) {
+		vscode.window.showInformationMessage('gitprofiles is disabled: must be in a workspace with multiple directories');
+		return;
+	}
+
+	if (state.get('gitprofiles') === undefined) {
+		state.update('gitprofiles', [] as Profile[]);
+	}
+
+	console.log(`gitprofiles initialized using workspace path: ${workspacePath}`);
+
+	const save = vscode.commands.registerCommand('extension.saveProfile', () => saveProfile(context.workspaceState, workspaceFolders));
+	const load = vscode.commands.registerCommand('extension.loadProfile', () => loadProfile(context.workspaceState));
+	const del = vscode.commands.registerCommand('extension.deleteProfile', () => deleteProfile(context.workspaceState));
+
+	context.subscriptions.push(save);
+	context.subscriptions.push(load);
+	context.subscriptions.push(del);
 }
 
-// this method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }
+
+async function saveProfile(state: vscode.Memento, workspaceFolders: readonly vscode.WorkspaceFolder[]) {
+	// get the new name of the profile from the user
+	const input = await vscode.window.showInputBox({ value: 'configurationName' });
+
+	if (!input) {
+		vscode.window.showErrorMessage('No gitprofile name provided: nothing was saved.');
+		return;
+	}
+	console.log(`Attempting to save new gitprofile as: ${input}`);
+
+	// get profiles from storage
+	const profiles = state.get('gitprofiles') as Profile[];
+	const newProfile = { name: input, branches: [] as Branch[] } as Profile;
+
+	// grab the branch name from each directory and save branchName and dirName
+	for (const dir of workspaceFolders) {
+		await simpleGit(dir.uri.fsPath).raw([
+			'rev-parse', '--abbrev-ref', 'HEAD'
+		], (e, branchName) => {
+			if (e) {
+				throw e;
+			}
+			branchName = branchName.replace('\n', '');
+			if (branchName) {
+				newProfile.branches.push({ name: branchName, directory: dir.uri.fsPath });
+			}
+		});
+	}
+
+	// if they specify an existing profile name, prompt them again
+	if (profiles.includes(newProfile)) {
+		const yesorno = await vscode.window.showQuickPick(['yes', 'no'], { title: "Are you sure? This will overwrite another profile." });
+
+		if (yesorno !== 'yes') { return; }
+
+		console.log(`Replacing profile: ${toPrettyJson(newProfile)}`);
+		const replacementIndex = profiles.findIndex(p => p.name === newProfile.name);
+		profiles[replacementIndex] = newProfile;
+	} else {
+		console.log(`Creating profile: ${toPrettyJson(newProfile)}`);
+		profiles.push(newProfile);
+	}
+
+	// update storage
+	state.update('gitprofiles', profiles);
+	vscode.window.showInformationMessage(`Current gitprofile saved as ${input}!`);
+}
+
+async function loadProfile(state: vscode.Memento) {
+	const profiles = state.get('gitprofiles') as Profile[];
+
+	// get which profile to load from the user
+	const input = await vscode.window.showQuickPick(profiles.map(p => p.name));
+	const profileToLoad = profiles.find(p => p.name === input);
+
+	if (profileToLoad === undefined) {
+		vscode.window.showErrorMessage('No gitprofile name provided: nothing was loaded.');
+		return;
+	}
+
+	console.log(`Loading the following from gitprofile: ${input}`);
+
+	// checkout to all the saved branches
+	for (const branch of profileToLoad.branches) {
+		await simpleGit(branch.directory).raw([
+			'checkout', branch.name
+		], (err) => {
+			if (err) {
+				throw err;
+			}
+		});
+	}
+	vscode.window.showInformationMessage(`gitprofile: ${input} loaded!`);
+}
+
+async function deleteProfile(state: vscode.Memento) {
+	const profiles = state.get('gitprofiles') as Profile[];
+	// show profile list, get one from user input
+	const input = await vscode.window.showQuickPick(profiles.map(p => p.name));
+	const profileToDelete = profiles.find(p => p.name === input);
+	if (profileToDelete === undefined) {
+		vscode.window.showErrorMessage('No gitprofile name provided: nothing was deleted.');
+		return;
+	}
+
+	console.log(`Deleting the following gitprofile: ${input}`);
+	console.log(toPrettyJson(profileToDelete));
+
+	// update storage
+	state.update('gitprofiles', profiles.filter(p => p.name !== profileToDelete.name));
+	vscode.window.showInformationMessage(`gitprofile: ${input} deleted!`);
+}
+
+/**
+ * Turns an object into a formatted JSON string.
+ * @param {Object} o
+ */
+function toPrettyJson(o: object) {
+	return JSON.stringify(o, null, 2);
+}
