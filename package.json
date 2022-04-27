@@ -12,7 +12,8 @@
   "activationEvents": [
     "onCommand:extension.saveProfile",
     "onCommand:extension.loadProfile",
-    "onCommand:extension.deleteProfile"
+    "onCommand:extension.deleteProfile",
+    "onCommand:extension.runCommand"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -28,6 +29,10 @@
       {
         "command": "extension.deleteProfile",
         "title": "gitprofiles: Delete Profile"
+      },
+      {
+        "command": "extension.runCommand",
+        "title": "gitprofiles: Run Command"
       }
     ]
   },

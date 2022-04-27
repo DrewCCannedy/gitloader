@@ -25,10 +25,12 @@ export function activate(context: vscode.ExtensionContext) {
 	const save = vscode.commands.registerCommand('extension.saveProfile', () => saveProfile(context.workspaceState, workspaceFolders));
 	const load = vscode.commands.registerCommand('extension.loadProfile', () => loadProfile(context.workspaceState));
 	const del = vscode.commands.registerCommand('extension.deleteProfile', () => deleteProfile(context.workspaceState));
+	const run = vscode.commands.registerCommand('extension.runCommand', () => runCommand(workspaceFolders));
 
 	context.subscriptions.push(save);
 	context.subscriptions.push(load);
 	context.subscriptions.push(del);
+	context.subscriptions.push(run);
 }
 
 export function deactivate() { }
@@ -124,6 +126,29 @@ async function deleteProfile(state: vscode.Memento) {
 	// update storage
 	state.update('gitprofiles', profiles.filter(p => p.name !== profileToDelete.name));
 	vscode.window.showInformationMessage(`gitprofile: ${input} deleted!`);
+}
+
+async function runCommand(workspaceFolders: readonly vscode.WorkspaceFolder[]) {
+	// get the command to run
+	const input = await vscode.window.showInputBox({ value: 'git checkout -b newBranch' });
+
+	if (input === undefined) {
+		vscode.window.showErrorMessage('No command provided.');
+		return;
+	}
+
+	console.log(`Running command: ${input}`);
+	const formattedInput = input.split(' ').filter(s => s !== 'git');
+	// run the command
+	for (const dir of workspaceFolders) {
+		await simpleGit(dir.uri.fsPath).raw(formattedInput, (err) => {
+			if (err) {
+				vscode.window.showErrorMessage(`${dir.uri.fsPath}: ${err}`);
+			}
+		}).catch(() => null);
+	}
+
+	vscode.window.showInformationMessage(`${input}: completed`);
 }
 
 /**
