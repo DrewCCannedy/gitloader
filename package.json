@@ -1,58 +1,65 @@
 {
-	"name": "gitloader",
-	"displayName": "gitloader",
-	"publisher": "gitloader",
-	"description": "Save and Load branch states in projects containing multiple git repos",
-	"version": "0.0.1",
-	"repository": {
-		"type" : "git",
-  		"url" : "https://github.com/DrewCCannedy/gitloader.git"
-	},
-	"engines": {
-		"vscode": "^1.42.0"
-	},
-	"categories": [
-		"Other"
-	],
-	"activationEvents": [
-		"onCommand:extension.save",
-		"onCommand:extension.load",
-		"onCommand:extension.delete"
-	],
-	"main": "./extension.js",
-	"contributes": {
-		"commands": [
-			{
-				"command": "extension.save",
-				"title": "Gitloader: Save"
-			},
-			{
-				"command": "extension.load",
-				"title": "Gitloader: Load"
-			},
-			{
-				"command": "extension.delete",
-				"title": "Gitloader: Delete"
-			}
-		]
-	},
-	"scripts": {
-		"lint": "eslint .",
-		"pretest": "npm run lint",
-		"test": "node ./test/runTest.js"
-	},
-	"devDependencies": {
-		"@types/glob": "^7.1.1",
-		"@types/mocha": "^7.0.1",
-		"@types/node": "^12.11.7",
-		"@types/vscode": "^1.42.0",
-		"eslint": "^6.8.0",
-		"glob": "^7.1.6",
-		"mocha": "^7.0.1",
-		"typescript": "^3.7.5",
-		"vscode-test": "^1.3.0"
-	},
-	"dependencies": {
-		"simple-git": "^1.131.0"
-	}
+  "name": "gitprofiles",
+  "displayName": "gitprofiles",
+  "description": "Tools for working with projects with multiple git repos",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.63.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:extension.saveProfile",
+    "onCommand:extension.loadProfile",
+    "onCommand:extension.deleteProfile",
+    "onCommand:extension.runCommand"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "extension.saveProfile",
+        "title": "gitprofiles: Save Profile"
+      },
+      {
+        "command": "extension.loadProfile",
+        "title": "gitprofiles: Load Profile"
+      },
+      {
+        "command": "extension.deleteProfile",
+        "title": "gitprofiles: Delete Profile"
+      },
+      {
+        "command": "extension.runCommand",
+        "title": "gitprofiles: Run Command"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/glob": "^7.1.4",
+    "@types/mocha": "^9.0.0",
+    "@types/node": "14.x",
+    "@types/vscode": "^1.63.0",
+    "@typescript-eslint/eslint-plugin": "^5.1.0",
+    "@typescript-eslint/parser": "^5.1.0",
+    "@vscode/test-electron": "^1.6.2",
+    "eslint": "^8.1.0",
+    "glob": "^7.1.7",
+    "mocha": "^9.1.3",
+    "typescript": "^4.4.4"
+  },
+  "dependencies": {
+    "fs": "^0.0.1-security",
+    "path": "^0.12.7",
+    "simple-git": "^2.48.0"
+  }
 }
